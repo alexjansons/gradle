@@ -314,6 +314,27 @@ class PmdPluginVersionIntegrationTest extends AbstractPmdPluginVersionIntegratio
         output.contains "\tEnsure you override both equals() and hashCode()"
     }
 
+    def "console output of consecutive tasks is shown"() {
+        buildFile << """
+            pmd {
+                consoleOutput = true
+                ignoreFailures = true
+            }
+            pmdTest {
+                mustRunAfter(pmdMain)
+            }
+        """
+        badCode()
+        file("src/main/java/org/gradle/Class2.java") <<
+            "package org.gradle; class Class2 { public boolean equals(Object arg) { return true; } }"
+
+        expect:
+        expectPmdDeprecationIfLegacy()
+        succeeds("pmdMain", "pmdTest")
+        output.contains("Class2.java")
+        output.contains("Class1Test.java")
+    }
+
     void "can configure number of threads on good code"() {
         goodCode()
         buildFile << """
@@ -402,6 +423,63 @@ class PmdPluginVersionIntegrationTest extends AbstractPmdPluginVersionIntegratio
         then:
         executedAndNotSkipped(':pmdMain')
         output.contains("PMD rule violations were found")
+    }
+
+    def "suppressed violations are not reported"() {
+        goodCode()
+        file("src/main/java/org/gradle/Suppressed.java") <<
+            "package org.gradle; class Suppressed { public boolean equals(Object arg) { return !!true; } } // NOPMD"
+
+        expect:
+        expectPmdDeprecationIfLegacy()
+        succeeds("pmdMain")
+        file("build/reports/pmd/main.xml")
+            .assertContents(not(containsString("suppressedviolation")))
+            .assertContents(not(containsString("OverrideBothEqualsAndHashcode")))
+    }
+
+    def "fails when no rule sets are configured"() {
+        goodCode()
+        buildFile << """
+            pmd {
+                ruleSets = []
+            }
+        """
+
+        expect:
+        expectPmdDeprecationIfLegacy()
+        fails("pmdMain")
+        failure.assertThatCause(containsString("No rulesets specified"))
+    }
+
+    def "logs violations at info level when no report and no console output is enabled"() {
+        badCode()
+        buildFile << """
+            pmd {
+                ignoreFailures = true
+            }
+            pmdTest {
+                reports {
+                    html.required = false
+                    xml.required = false
+                }
+            }
+        """
+
+        when:
+        expectPmdDeprecationIfLegacy()
+        succeeds("pmdTest")
+
+        then:
+        !output.contains("Using multiple unary operators may be a bug")
+
+        when:
+        expectPmdDeprecationIfLegacy()
+        succeeds("pmdTest", "--rerun", "--info")
+
+        then:
+        outputContains("Using multiple unary operators may be a bug")
+        outputContains("2 PMD rule violations were found.")
     }
 
     private static Matcher<String> containsClass(String className) {

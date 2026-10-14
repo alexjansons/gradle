@@ -94,6 +94,30 @@ class PmdPluginIncrementalAnalysisIntegrationTest extends AbstractPmdPluginVersi
         file("build/reports/pmd/main.xml").assertContents(CoreMatchers.not(containsString('BadClass')))
     }
 
+    def 'incremental analysis works with multiple threads'() {
+        given:
+        Assume.assumeTrue(supportIncrementalAnalysis())
+        buildFile << 'pmd { threads = 2 }'
+        goodCode()
+        badCode()
+
+        when:
+        expectPmdDeprecationIfLegacy()
+        fails('pmdMain')
+
+        then:
+        file("build/tmp/pmdMain/incremental.cache").exists()
+        file("build/reports/pmd/main.xml").assertContents(Matchers.containsText('BadClass'))
+
+        when:
+        file('src/main/java/org/gradle/BadClass.java').delete()
+        expectPmdDeprecationIfLegacy()
+        succeeds('pmdMain')
+
+        then:
+        file("build/reports/pmd/main.xml").assertContents(CoreMatchers.not(containsString('BadClass')))
+    }
+
     def 'incremental analysis invalidated when #reason'() {
         given:
         Assume.assumeTrue(supportIncrementalAnalysis())
