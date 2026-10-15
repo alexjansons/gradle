@@ -82,6 +82,7 @@ class PmdLegacyVersionDeprecationIntegrationTest extends AbstractIntegrationSpec
     }
 
     def "emits deprecation and runs PMD when the PMD version cannot be determined"() {
+        assumeTrue(PmdCoverage.supportsJdkVersion(VersionNumber.parse(PmdPlugin.DEFAULT_PMD_VERSION), Jvm.current().javaVersionMajor))
         buildFile << """
             configurations {
                 pmdOriginal
